@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Barrel Distance – v3.1</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --panel: #11182a;
+      --accent: #6cf0ff;
+      --accent2: #ffc86c;
+      --danger: #ff3b3b;
+      --safe: #53d59b;
+      --text: #d8e7ff;
+      --muted: #94a3b8;
+      --grid: rgba(255,255,255,0.06);
+      --barrel-body: #7a3e1b;
+      --barrel-top: #9c5a32;
+      --barrel-stripe: #c57a45;
+      --shadow: rgba(0,0,0,0.5);
+      --bird-metal: #6a7a87;
+      --bird-highlight: #9fb3c4;
+      --bird-flame1: #ff7a18;
+      --bird-flame2: #ffb347;
+      --bird-flame3: #ffd56c;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1200px 600px at 50% -20%, #132036 0%, var(--bg) 60%);
+      user-select: none;
+    }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; background: linear-gradient(180deg, #0e1626, #0a121f);
+      border-bottom: 1px solid #1e2d4a;
+      position: sticky; top: 0; z-index: 1000;
+    }
+    header .title { font-weight: 700; letter-spacing: 0.3px; }
+    header .stats { display: flex; gap: 14px; font-size: 14px; color: var(--muted); }
+    header .stats b { color: var(--text); }
+    header .controls { display: flex; gap: 8px; }
+    button {
+      background: #13233e; color: var(--text); border: 1px solid #27456f; border-radius: 8px; padding: 8px 12px;
+      cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    button:hover { border-color: #3d6aa6; }
+    button.primary { background: linear-gradient(135deg, #1c3a5f 0%, #0f2440 100%);
+      border-color: #3d6aa6; color: #bfe6ff;
+    }
+
+    #board-wrap { display: grid; place-items: center; padding: 12px; }
+    #board {
+      position: relative; width: min(920px, 96vw); aspect-ratio: 16/9; max-height: 72vh;
+      background: linear-gradient(180deg, #0d1524, #0a121f);
+      border: 1px solid #1e2d4a; border-radius: 12px; overflow: hidden;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+    }
+    /* subtle grid */
+    #board::before { content: ""; position: absolute; inset: 0; background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(to right, var(--grid) 1px, transparent 1px);
+      background-size: 60px 60px; pointer-events: none; z-index: 0; }
+
+    .hud {
+      position: absolute; inset: 12px; display: flex; gap: 8px; align-items: center;
+      justify-content: space-between; font-size: 14px; color: var(--muted);
+      pointer-events: none; z-index: 2;
+    }
+    .hud .left, .hud .right { display: flex; gap: 12px; align-items: center; }
+    .hud .pill { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid #2a3c60; padding: 6px 10px; border-radius: 999px; }
+
+    /* Barrel */
+    .barrel {
+      position: absolute; width: 48px; height: 64px; transform: translate(-50%, -50%);
+      filter: drop-shadow(0 6px 10px var(--shadow));
+      transition: box-shadow 120ms ease, transform 80ms ease;
+      pointer-events: auto; z-index: 1;
+    }
+    .barrel .body { position: absolute; inset: 0; border-radius: 10px / 12px; background: var(--barrel-body); border: 2px solid #5a2d15; overflow: hidden; }
+    .barrel .body::before, .barrel .body::after { content: ""; position: absolute; left: 0; right: 0; height: 10px; background: var(--barrel-stripe); }
+    .barrel .body::before { top: 16px; }
+    .barrel .body::after { bottom: 16px; }
+    .barrel .top { position: absolute; left: 4px; right: 4px; top: -8px; height: 16px; border-radius: 999px; background: linear-gradient(#b06b3d, #7d4b2b); border: 2px solid #5a2d15; }
+    .barrel .timer { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--muted); background: rgba(0,0,0,0.55); padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); pointer-events: none; }
+    .barrel.unsafe .body { outline: 3px solid rgba(255,0,0,0.0); }
+    .barrel.unsafe { animation: blink 600ms linear infinite; }
+    @keyframes blink { 0%, 49% { filter: drop-shadow(0 6px 10px var(--shadow)); } 50%, 100% { filter: drop-shadow(0 6px 10px rgba(255,0,0,0.55)); } }
+    .dragging { transform: translate(-50%, -50%) scale(1.06); z-index: 5; }
+
+    /* Spawn drop animation */
+    .spawn { animation: dropIn 620ms cubic-bezier(.22,.61,.36,1) both; }
+    @keyframes dropIn { from { transform: translate(-50%, -110%) } 70% { transform: translate(-50%, -52%) } to { transform: translate(-50%, -50%) } }
+
+    /* Bird */
+    .bird {
+      position: absolute; width: 68px; height: 52px; transform: translate(-50%, -50%);
+      pointer-events: auto; z-index: 3; cursor: pointer;
+      filter: drop-shadow(0 6px 10px rgba(255,120,0,0.45));
+    }
+    .bird .body { position: absolute; inset: 0; background: linear-gradient(180deg, var(--bird-metal), #4c5964); border-radius: 18px; border: 2px solid #3e4952; }
+    .bird .wing { position: absolute; width: 30px; height: 18px; background: linear-gradient(180deg, #5d6c78, #3d4851); border: 2px solid #36424a; border-radius: 24px; top: 14px; }
+    .bird .wing.left { left: -10px; transform: rotate(-8deg); }
+    .bird .wing.right { right: -10px; transform: rotate(8deg); }
+    .bird .beak { position: absolute; width: 14px; height: 10px; background: #c6d6e2; border: 2px solid #8aa1b1; border-radius: 6px; right: -6px; top: 20px; }
+    .bird .flame { position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, var(--bird-flame3), var(--bird-flame2) 55%, var(--bird-flame1) 75%, rgba(255,0,0,0.0) 80%); animation: flame 520ms infinite alternate ease-in-out; filter: blur(0.5px); }
+    @keyframes flame { from { transform: translateX(-50%) scale(0.95); opacity: .9 } to { transform: translateX(-50%) scale(1.08); opacity: 1 } }
+    .bird .timer { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #ffd9bd; background: rgba(0,0,0,0.55); padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); pointer-events: none; }
+    .bird .hits { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #ffd9bd; background: rgba(0,0,0,0.45); padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); pointer-events: none; }
+    .bird.spawn { animation: dropIn 680ms cubic-bezier(.22,.61,.36,1) both; }
+    .bird.hit { animation: birdHit 160ms ease-out; }
+    @keyframes birdHit { from { filter: drop-shadow(0 6px 10px rgba(255,120,0,0.75)); transform: translate(-50%, -50%) scale(1.06); } to { filter: drop-shadow(0 6px 10px rgba(255,120,0,0.45)); transform: translate(-50%, -50%) scale(1.0); } }
+    .bird.dead { animation: birdDead 300ms ease-out forwards; }
+    @keyframes birdDead { to { opacity: 0; transform: translate(-50%, -50%) scale(0.92); } }
+
+    /* overlays */
+    .overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,0.45); color: var(--text); backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity 180ms; z-index: 100; }
+    .overlay.show { opacity: 1; pointer-events: auto; }
+    .card { position: relative; background: #0d1727; border: 1px solid #294369; padding: 16px; border-radius: 12px; text-align: center; min-width: 260px; z-index: 101; }
+    .card h2 { margin: 4px 0 10px; }
+    .card p { margin: 8px 0; color: var(--muted); }
+    .card .row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+
+    .flash { position: absolute; inset: 0; background: rgba(255,0,0,0.14); opacity: 0; pointer-events: none; z-index: 30; }
+    .flash.show { animation: flashAnim 700ms ease-out; }
+    @keyframes flashAnim { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+    .shake { animation: shake 450ms cubic-bezier(.36,.07,.19,.97) both; }
+    @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
+
+    footer { text-align: center; font-size: 12px; color: var(--muted); padding: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">🛢️ Barrel Distance</div>
+    <div class="stats">
+      <div>Stage: <b id="stageNum">1</b></div>
+      <div>Best: <b id="bestStage">1</b></div>
+      <div>Safe distance: <b id="safeLabel">2 units</b></div>
+    </div>
+    <div class="controls">
+      <button id="restartBtn">Restart</button>
+      <button id="prevBtn">Prev</button>
+      <button id="nextBtn" class="primary">Next</button>
+    </div>
+  </header>
+
+  <div id="board-wrap">
+    <div id="board">
+      <div class="hud">
+        <div class="left">
+          <div class="pill">Drag barrels to keep all pairs ≥ safe distance. Unsafe pairs blink red; fix within the fuse.</div>
+        </div>
+        <div class="right">
+          <div class="pill">Mouse & Touch supported</div>
+        </div>
+      </div>
+      <div id="flash" class="flash"></div>
+      <div id="overlay" class="overlay">
+        <div class="card">
+          <h2 id="overlayTitle">Stage Cleared</h2>
+          <p id="overlayText">All threats neutralized.</p>
+          <div class="row">
+            <button id="overlayRestart">Restart</button>
+            <button id="overlayNext" class="primary">Next Stage</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer>
+    Made for single-file offline play. No libraries. © 2026
+  </footer>
+
+  <script>
+  (function(){
+    const board = document.getElementById('board');
+    const overlay = document.getElementById('overlay');
+    const flash = document.getElementById('flash');
+    const stageEl = document.getElementById('stageNum');
+    const bestEl = document.getElementById('bestStage');
+    const safeLabel = document.getElementById('safeLabel');
+
+    const restartBtn = document.getElementById('restartBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const overlayRestart = document.getElementById('overlayRestart');
+    const overlayNext = document.getElementById('overlayNext');
+
+    // Units → pixels mapping
+    const UNIT_PX = 60; // one unit equals 60 px on board
+    const SAFE_UNITS = 2; // safe distance in units
+    const SAFE_PX = SAFE_UNITS * UNIT_PX; // computed safe distance in pixels
+    const EXPLODE_MS = 3000; // barrel fuse: 3 seconds
+    const BIRD_FUSE_MS = 6000; // bird fuse: 6 seconds
+    const BIRD_HITS_REQ = 4; // clicks to kill bird
+    const CLEAR_GRACE_MS = 300; // wait a short moment with all safe before auto-clear
+
+    safeLabel.textContent = SAFE_UNITS + ' units';
+
+    // persistent best stage
+    let bestStage = Number(localStorage.getItem('barrel_best')) || 1;
+    bestEl.textContent = bestStage;
+
+    // Stage → barrel counts (extend to 11)
+    const STAGE_COUNTS = [2,3,3,4,5,6,7,8,9,10,6];
+
+    // Prebuilt layouts for first 3 easy teaching stages
+    const FIXED_LEVELS = [
+      [{x:0.45, y:0.5}, {x:0.52, y:0.5}],
+      [{x:0.43, y:0.46}, {x:0.50, y:0.48}, {x:0.47, y:0.55}],
+      [{x:0.40, y:0.50}, {x:0.44, y:0.50}, {x:0.48, y:0.50}],
+    ];
+
+    let stage = 1; // 1-index
+    let barrels = []; // {el,x,y}
+    let hazards = new Map(); // key 'i-j' -> startTime
+    let lastAllSafeAt = 0;
+    let dragging = null; // {index, offsetX, offsetY}
+    let bird = null; // {el, x, y, hits, start, dead}
+
+    function clamp(val, min, max){ return Math.max(min, Math.min(max, val)); }
+    function dist(ax, ay, bx, by){ const dx = ax-bx, dy = ay-by; return Math.hypot(dx, dy); }
+
+    function pxFromPct(pctX, pctY){ const rect = board.getBoundingClientRect(); return { x: pctX * rect.width, y: pctY * rect.height }; }
+    function pctFromPx(x, y){ const rect = board.getBoundingClientRect(); return { x: x / rect.width, y: y / rect.height }; }
+
+    function makeBarrel(idx, x, y){
+      const b = document.createElement('div'); b.className = 'barrel spawn'; b.setAttribute('data-idx', idx);
+      b.style.left = x + 'px'; b.style.top = y + 'px';
+      b.innerHTML = '<div class="top"></div><div class="body"></div><div class="timer"></div>';
+      board.appendChild(b);
+      enableDrag(b);
+      b.addEventListener('animationend', () => b.classList.remove('spawn'), { once: true });
+      return { el: b, x, y };
+    }
+
+    function makeBird(x, y){
+      const el = document.createElement('div'); el.className = 'bird spawn';
+      el.style.left = x + 'px'; el.style.top = y + 'px';
+      el.innerHTML = '<div class="body"></div><div class="wing left"></div><div class="wing right"></div><div class="beak"></div><div class="flame"></div><div class="timer"></div><div class="hits"></div>';
+      board.appendChild(el);
+      el.addEventListener('animationend', () => el.classList.remove('spawn'), { once: true });
+      const obj = { el, x, y, hits: 0, start: performance.now(), dead: false };
+      el.addEventListener('pointerdown', ()=>{
+        if(obj.dead) return;
+        obj.hits++;
+        el.classList.add('hit'); setTimeout(()=> el.classList.remove('hit'), 160);
+        if(obj.hits >= BIRD_HITS_REQ){ obj.dead = true; el.classList.add('dead'); setTimeout(()=>{ el.remove(); }, 320); }
+      });
+      return obj;
+    }
+
+    function clearEntities(){ barrels.forEach(b=>b.el.remove()); barrels = []; hazards.clear(); if(bird && bird.el){ bird.el.remove(); } bird = null; }
+
+    function randomBetween(min, max){ return Math.random() * (max-min) + min; }
+
+    function generateRandomLayout(count){
+      const rect = board.getBoundingClientRect();
+      const marginX = 24, marginY = 32; const minSafe = SAFE_PX * 1.05; const smallSep = 28;
+      const points = []; const clusters = count >= 9 ? 3 : (count >= 7 ? 2 : 1); let remaining = count;
+      function placeFarFromAll(minDist){
+        for(let tries=0; tries<200; tries++){
+          const x = randomBetween(marginX, rect.width - marginX);
+          const y = randomBetween(marginY, rect.height - marginY);
+          if(points.every(p => dist(p.x,p.y,x,y) >= minDist)) return {x,y};
+        }
+        return {x: rect.width/2, y: rect.height/2};
+      }
+      for(let c=0;c<clusters;c++){
+        if(remaining <= 0) break;
+        const slotsLeft = clusters - c - 1; const minThis = 2; const maxThis = Math.min(4, remaining - slotsLeft*2);
+        const k = Math.max(minThis, Math.min(maxThis, Math.floor(randomBetween(minThis, maxThis+0.999))));
+        const center = placeFarFromAll(minSafe * 1.5); const r = Math.min(SAFE_PX * 0.45, 70);
+        for(let i=0;i<k;i++){
+          for(let tries=0; tries<200; tries++){
+            const ang = Math.random()*Math.PI*2; const rad = randomBetween(r*0.2, r);
+            const x = clamp(center.x + Math.cos(ang)*rad, marginX, rect.width - marginX);
+            const y = clamp(center.y + Math.sin(ang)*rad, marginY, rect.height - marginY);
+            const ok = points.filter(p=>p.cluster===c).every(p => dist(p.x,p.y,x,y) >= smallSep);
+            if(ok){ points.push({x,y, cluster:c}); break; }
+          }
+        }
+        remaining -= k;
+      }
+      for(let i=0;i<remaining;i++){
+        const pt = placeFarFromAll(minSafe); points.push({x:pt.x, y:pt.y, cluster:null});
+      }
+      return points.map(p=>({x: p.x/rect.width, y: p.y/rect.height}));
+    }
+
+    function generateStage11(){
+      const rect = board.getBoundingClientRect();
+      const minSafe = SAFE_PX * 1.05;
+      // place bird roughly central
+      const bx = randomBetween(rect.width*0.35, rect.width*0.65);
+      const by = randomBetween(rect.height*0.35, rect.height*0.65);
+      const birdPct = { x: bx/rect.width, y: by/rect.height };
+
+      const points = [];
+      const marginX = 24, marginY = 32;
+      // two barrels near bird (unsafe cluster)
+      const rNear = Math.min(SAFE_PX * 0.42, 64);
+      for(let i=0;i<2;i++){
+        const ang = Math.random()*Math.PI*2; const rad = randomBetween(rNear*0.2, rNear);
+        const x = clamp(bx + Math.cos(ang)*rad, marginX, rect.width - marginX);
+        const y = clamp(by + Math.sin(ang)*rad, marginY, rect.height - marginY);
+        points.push({x,y});
+      }
+      // extra unsafe cluster of 3 somewhere around (but not overlapping) bird area
+      const rCluster = Math.min(SAFE_PX * 0.45, 70);
+      // choose a cluster center at least minSafe from the bird, but still within mid area so it's pressuring
+      function placeClusterCenter(){
+        for(let tries=0; tries<200; tries++){
+          const cx = randomBetween(rect.width*0.20, rect.width*0.80);
+          const cy = randomBetween(rect.height*0.20, rect.height*0.80);
+          if(Math.hypot(cx-bx, cy-by) >= minSafe) return {cx, cy};
+        }
+        return {cx: rect.width*0.75, cy: rect.height*0.45};
+      }
+      const {cx, cy} = placeClusterCenter();
+      for(let i=0;i<3;i++){
+        for(let tries=0; tries<200; tries++){
+          const ang = Math.random()*Math.PI*2; const rad = randomBetween(rCluster*0.2, rCluster);
+          const x = clamp(cx + Math.cos(ang)*rad, marginX, rect.width - marginX);
+          const y = clamp(cy + Math.sin(ang)*rad, marginY, rect.height - marginY);
+          const ok = points.every(p => Math.hypot(p.x-x, p.y-y) >= 26); // small separation
+          if(ok){ points.push({x,y}); break; }
+        }
+      }
+      // one last barrel placed safely to keep total = 6
+      function farFromAll(minDist){
+        for(let tries=0; tries<200; tries++){
+          const x = randomBetween(marginX, rect.width - marginX);
+          const y = randomBetween(marginY, rect.height - marginY);
+          const ok1 = points.every(p => Math.hypot(p.x-x, p.y-y) >= minDist);
+          const ok2 = Math.hypot(bx-x, by-y) >= minSafe;
+          if(ok1 && ok2) return {x,y};
+        }
+        return {x: rect.width*0.85, y: rect.height*0.80};
+      }
+      const last = farFromAll(minSafe);
+      points.push(last);
+
+      const barrelsPct = points.map(p=>({x: p.x/rect.width, y: p.y/rect.height}));
+      return { barrelsPct, birdPct };
+    }
+
+    function loadStage(n){
+      stage = clamp(n, 1, STAGE_COUNTS.length);
+      stageEl.textContent = stage;
+      clearEntities(); overlay.classList.remove('show'); flash.classList.remove('show'); board.classList.remove('shake');
+
+      let layoutPct;
+      if(stage <= FIXED_LEVELS.length){
+        layoutPct = FIXED_LEVELS[stage-1];
+        layoutPct.forEach((p, i)=>{ const pos = pxFromPct(p.x, p.y); barrels.push(makeBarrel(i, pos.x, pos.y)); });
+      } else if(stage <= 10) {
+        layoutPct = generateRandomLayout(STAGE_COUNTS[stage-1]);
+        layoutPct.forEach((p, i)=>{ const pos = pxFromPct(p.x, p.y); barrels.push(makeBarrel(i, pos.x, pos.y)); });
+      } else {
+        const { barrelsPct, birdPct } = generateStage11();
+        barrelsPct.forEach((p, i)=>{ const pos = pxFromPct(p.x, p.y); barrels.push(makeBarrel(i, pos.x, pos.y)); });
+        const bPos = pxFromPct(birdPct.x, birdPct.y); bird = makeBird(bPos.x, bPos.y);
+      }
+      lastAllSafeAt = performance.now(); updateHUD(); requestAnimationFrame(tick);
+    }
+
+    function updateHUD(){ bestEl.textContent = bestStage; }
+
+    function enableDrag(el){
+      el.addEventListener('pointerdown', (e)=>{
+        el.setPointerCapture(e.pointerId);
+        const idx = Number(el.getAttribute('data-idx'));
+        const b = barrels[idx];
+        dragging = { index: idx, offsetX: e.clientX - b.x, offsetY: e.clientY - b.y };
+        el.classList.add('dragging');
+      });
+      el.addEventListener('pointermove', (e)=>{
+        if(!dragging || dragging.index !== Number(el.getAttribute('data-idx'))) return;
+        const rect = board.getBoundingClientRect();
+        let nx = e.clientX - dragging.offsetX; let ny = e.clientY - dragging.offsetY;
+        nx = clamp(nx, 24, rect.width - 24); ny = clamp(ny, 32, rect.height - 32);
+        const idx = dragging.index; const b = barrels[idx]; b.x = nx; b.y = ny; b.el.style.left = nx + 'px'; b.el.style.top = ny + 'px';
+      });
+      el.addEventListener('pointerup', (e)=>{ el.releasePointerCapture(e.pointerId); el.classList.remove('dragging'); dragging = null; });
+      el.addEventListener('pointercancel', ()=>{ el.classList.remove('dragging'); dragging = null; });
+    }
+
+    function keyFor(i,j){ return i<j ? i+'-'+j : j+'-'+i; }
+
+    function tick(){
+      const now = performance.now();
+      // barrel hazards
+      for(let i=0;i<barrels.length;i++){
+        for(let j=i+1;j<barrels.length;j++){
+          const d = dist(barrels[i].x, barrels[i].y, barrels[j].x, barrels[j].y);
+          const key = keyFor(i,j);
+          if(d < SAFE_PX){ if(!hazards.has(key)) hazards.set(key, now); const elapsed = now - hazards.get(key); if(elapsed >= EXPLODE_MS){ return explode('A pair of barrels stayed too close for 3 seconds.'); } }
+          else { if(hazards.has(key)) hazards.delete(key); }
+        }
+      }
+      // update barrel UI
+      for(let i=0;i<barrels.length;i++){
+        let isUnsafe = false, minLeft = Infinity;
+        for(let j=0;j<barrels.length;j++){ if(i===j) continue; const k = keyFor(i,j); if(hazards.has(k)){ isUnsafe = true; const left = Math.max(0, EXPLODE_MS - (now - hazards.get(k))); if(left < minLeft) minLeft = left; } }
+        const b = barrels[i]; b.el.classList.toggle('unsafe', isUnsafe); const t = b.el.querySelector('.timer'); t.textContent = isUnsafe ? (minLeft/1000).toFixed(1)+'s' : '';
+      }
+
+      // bird fuse
+      if(stage >= 11 && bird && !bird.dead){
+        const left = Math.max(0, BIRD_FUSE_MS - (now - bird.start));
+        const tEl = bird.el.querySelector('.timer'); const hEl = bird.el.querySelector('.hits');
+        tEl.textContent = (left/1000).toFixed(1)+'s'; hEl.textContent = (BIRD_HITS_REQ - bird.hits)+' hits';
+        if(left <= 0){ return explode('The flaming metal bird exploded.'); }
+      }
+
+      // clear condition
+      if(hazards.size === 0){
+        if(now - lastAllSafeAt > CLEAR_GRACE_MS){ if(stage >= 11 && bird && !bird.dead){} else { return stageClear(); } }
+      } else { lastAllSafeAt = now; }
+      requestAnimationFrame(tick);
+    }
+
+    function explode(reason){ flash.classList.add('show'); board.classList.add('shake'); showOverlay('Boom!', reason+' Try again.', true); }
+
+    function stageClear(){ if(stage > bestStage){ bestStage = stage; localStorage.setItem('barrel_best', String(bestStage)); } updateHUD(); showOverlay('Stage Cleared','All barrels are safe'+(stage>=11?' and the bird is down.':'')+'.', false); }
+
+    function showOverlay(title, text, isFail){
+      document.getElementById('overlayTitle').textContent = title;
+      document.getElementById('overlayText').textContent = text;
+      overlay.classList.add('show');
+      overlayRestart.textContent = isFail ? 'Retry Stage' : 'Play Again';
+      overlayNext.textContent = isFail ? 'Reset' : 'Next Stage';
+    }
+
+    overlayRestart.addEventListener('click', ()=>{ overlay.classList.remove('show'); loadStage(stage); });
+    overlayNext.addEventListener('click', ()=>{ overlay.classList.remove('show'); if(document.getElementById('overlayTitle').textContent.startsWith('Boom')){ loadStage(stage); } else { loadStage(stage+1); } });
+
+    restartBtn.addEventListener('click', ()=>{ loadStage(stage); });
+    prevBtn.addEventListener('click', ()=>{ loadStage(stage-1); });
+    nextBtn.addEventListener('click', ()=>{ loadStage(stage+1); });
+
+    // initial
+    loadStage(1);
+
+    // keep entities placed on resize
+    window.addEventListener('resize', ()=>{
+      barrels.forEach(b=>{ const pct = pctFromPx(b.x, b.y); const newPx = pxFromPct(pct.x, pct.y); b.x = newPx.x; b.y = newPx.y; b.el.style.left = b.x + 'px'; b.el.style.top = b.y + 'px'; });
+      if(bird){ const pct = pctFromPx(bird.x, bird.y); const newPx = pxFromPct(pct.x, pct.y); bird.x = newPx.x; bird.y = newPx.y; bird.el.style.left = bird.x + 'px'; bird.el.style.top = bird.y + 'px'; }
+    });
+  })();
+  </script>
+</body>
+</html>
